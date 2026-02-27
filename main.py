@@ -1,29 +1,37 @@
-from loader.loader import Loader
+from typing import Any, Dict, Tuple
+
+import requests
+
+from loader.loader import BigQueryLoader
 from utils.logger import logger
-from utils.settings import settings
 
 
-def main(request):
-    request_json = request.get_json()
-    bucket_name = request_json.get("bucket")
+def main(request: requests) -> Tuple[Dict[str, Any], int]:
+    """
+    Cloud Function entry point for loading processed CSV
+    data from GCS into BigQuery.
+
+    Args:
+        request: Incoming HTTP request containing JSON body
+                 with the GCS bucket name.
+
+    Returns:
+        Tuple containing JSON response and HTTP status code.
+    """
+    request_data: Dict[str, Any] = request.get_json(silent=True) or {}
+    bucket_name: str | None = request_data.get("bucket")
 
     if not bucket_name:
-        return {"error": "bucket name not provided"}, 400
+        logger.warning("Bucket name not provided in request.")
+        return {"error": "Bucket name not provided"}, 400
 
     try:
-        loader = Loader()
-        loader.load(bucket_name)
-        return {"status": "success"}, 200
-    except Exception as e:
-        logger.error(f"Load failed: {e}")
-        return {"error": str(e)}, 500
+        loader = BigQueryLoader()
+        loader.load_from_gcs(bucket_name)
 
-#
-# if __name__ == "__main__":
-#     class MockRequest:
-#         def get_json(self):
-#             return {"bucket": "asteroids-etl"}
-#
-#     response, status = main(MockRequest())
-#     print(f"Status: {status}")
-#     print(f"Response: {response}")
+        logger.info("BigQuery load completed successfully.")
+        return {"status": "success"}, 200
+
+    except Exception as exc:
+        logger.exception("BigQuery load failed.")
+        return {"error": "Internal server error"}, 500
